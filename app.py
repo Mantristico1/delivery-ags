@@ -41,8 +41,8 @@ if not st.session_state.autenticado:
         tab_log, tab_reg = st.tabs(["🔑 Entrar", "📝 Registrarse"])
         
         with tab_log:
-            e_l = st.text_input("Correo:")
-            p_l = st.text_input("Contraseña:", type="password")
+            e_l = st.text_input("Correo:", key="login_email")
+            p_l = st.text_input("Contraseña:", type="password", key="login_pass")
             if st.button("Iniciar Sesión", use_container_width=True):
                 if e_l in db["usuarios"] and db["usuarios"][e_l]["clave"] == p_l:
                     st.session_state.autenticado = True
@@ -53,10 +53,10 @@ if not st.session_state.autenticado:
                     st.error("Datos incorrectos")
 
         with tab_reg:
-            r_r = st.selectbox("Rol", ["Cliente", "Repartidor"])
-            e_r = st.text_input("Correo electrónico (Será tu ID):")
-            n_r = st.text_input("Nombre Público (Cómo te verán):")
-            p_r = st.text_input("Contraseña:", type="password")
+            r_r = st.selectbox("Rol", ["Cliente", "Repartidor"], key="reg_rol")
+            e_r = st.text_input("Correo electrónico (Será tu ID):", key="reg_email")
+            n_r = st.text_input("Nombre Público (Cómo te verán):", key="reg_name")
+            p_r = st.text_input("Contraseña:", type="password", key="reg_pass")
             if st.button("Crear Cuenta", use_container_width=True):
                 if es_correo_valido(e_r) and n_r and p_r:
                     if e_r not in db["usuarios"]:
@@ -72,7 +72,19 @@ with st.sidebar:
     st.image(u_info["foto"], width=80)
     st.title(u_info["nombre"])
     st.caption(f"Rol: {st.session_state.user_rol}")
-    if st.button("Cerrar Sesión"):
+    
+    with st.expander("⚙️ Editar Mi Información"):
+        nuevo_nombre = st.text_input("Cambiar Nombre", value=u_info["nombre"], key="edit_name")
+        nueva_foto = st.text_input("URL nueva foto perfil", key="edit_photo")
+        nueva_clv = st.text_input("Cambiar Contraseña", type="password", key="edit_pass")
+        if st.button("Actualizar Perfil", key="btn_update"):
+            u_info["nombre"] = nuevo_nombre
+            if nueva_foto: u_info["foto"] = nueva_foto
+            if nueva_clv: u_info["clave"] = nueva_clv
+            st.success("¡Cambios guardados!")
+            st.rerun()
+
+    if st.button("Cerrar Sesión", key="logout_btn"):
         st.session_state.autenticado = False
         st.rerun()
 
@@ -88,7 +100,7 @@ if st.session_state.user_rol == "Administrador":
             clientes_dict = {info["nombre"]: email for email, info in db["usuarios"].items() if info["rol"] == "Cliente"}
             reps_dict = {info["nombre"]: email for email, info in db["usuarios"].items() if info["rol"] == "Repartidor"}
             
-            with st.form("nuevo_p"):
+            with st.form("nuevo_pedido_form"):
                 nom_c = st.selectbox("Seleccionar Cliente", list(clientes_dict.keys()) if clientes_dict else ["No hay clientes"])
                 dir_p = st.text_input("Dirección")
                 nom_r = st.selectbox("Asignar Repartidor", list(reps_dict.keys()) if reps_dict else ["No hay repartidores"])
@@ -110,7 +122,7 @@ if st.session_state.user_rol == "Administrador":
             for p in db["pedidos"]:
                 if p["estado"] == "En camino":
                     folium.Marker([p['lat'], p['lon']], popup=f"Para: {p['cliente_nombre']}").add_to(m)
-            st_folium(m, height=350, key="mapa_admin")
+            st_folium(m, height=350, key="mapa_admin_final")
 
     with t2:
         st.subheader("Control de Usuarios")
@@ -128,7 +140,7 @@ elif st.session_state.user_rol == "Repartidor":
     for p in mis_p:
         st.info(f"Pedido #{p['id']} para **{p['cliente_nombre']}**")
         st.write(f"📍 {p['direccion']}")
-        if st.button("Finalizar Entrega", key=f"f_{p['id']}"):
+        if st.button("Finalizar Entrega", key=f"f_final_{p['id']}"):
             p["estado"] = "Entregado"
             st.rerun()
 
@@ -142,7 +154,7 @@ elif st.session_state.user_rol == "Cliente":
             st.success("Tu pedido está en ruta.")
             m_c = folium.Map(location=[activo['lat'], activo['lon']], zoom_start=14)
             folium.Marker([activo['lat'], activo['lon']], icon=folium.Icon(color='orange', icon='motorcycle', prefix='fa')).add_to(m_c)
-            st_folium(m_c, height=400, key="mapa_cli")
+            st_folium(m_c, height=400, key="mapa_cli_final")
         st.table(mis_pedidos)
     else:
         st.info("No tienes pedidos activos.")
