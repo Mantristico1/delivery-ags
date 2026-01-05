@@ -2,60 +2,54 @@ import streamlit as st
 import folium
 from streamlit_folium import st_folium
 
-# --- CONFIGURACIÓN DE LA PÁGINA ---
+# 1. Configuración de la página
 st.set_page_config(page_title="Delivery AGS", layout="wide")
 
-# --- 1. SELECTOR DE IDENTIDAD (Arriba a la izquierda) ---
-# Usamos la barra lateral para que siempre esté accesible
+# 2. Inicializar el estado del mapa (ESTO ES LO QUE FALTA)
+# Esto hace que Streamlit "recuerde" si el mapa debe estar visible
+if 'ver_mapa' not in st.session_state:
+    st.session_state.ver_mapa = False
+
+# 3. BARRA LATERAL (Tu selector de rol)
 with st.sidebar:
-    st.title("👤 Identidad")
-    rol = st.selectbox(
-        "¿Quién eres?",
-        ["Usuario / Cliente", "Repartidor", "Administrador"],
-        help="Selecciona tu perfil para ver opciones personalizadas"
-    )
-    st.info(f"Sesión iniciada como: {rol}")
+    st.title("Configuración")
+    rol = st.selectbox("Selecciona tu rol:", ["Administrador", "Repartidor", "Cliente"])
+    st.write(f"Conectado como: **{rol}**")
 
-# --- 2. LÓGICA DEL MAPA (Para que no desaparezca) ---
-# Inicializamos el estado del mapa si no existe
-if 'mostrar_ruta' not in st.session_state:
-    st.session_state.mostrar_ruta = False
-
-st.title("📍 Sistema de Entrega AGS")
+# 4. CUERPO PRINCIPAL
+st.title("📍 Sistema de Rutas Delivery AGS")
 
 col1, col2 = st.columns([1, 2])
 
 with col1:
-    st.subheader("Configuración de Ruta")
-    origen = st.text_input("Punto de origen", "Centro, Aguascalientes")
-    destino = st.text_input("Punto de destino", "Norte, Aguascalientes")
+    st.subheader("Datos de entrega")
+    origen = st.text_input("Origen", "Tu ubicación")
+    destino = st.text_input("Destino", "Punto de entrega")
     
-    # Al hacer clic, cambiamos el estado a True
-    if st.button("Calcular ruta"):
-        st.session_state.mostrar_ruta = True
+    # Al hacer clic, activamos el estado
+    if st.button("Calcular Ruta"):
+        st.session_state.ver_mapa = True
 
 with col2:
-    st.subheader("Mapa de Entrega")
-    
-    # Solo mostramos el mapa si el estado es True
-    if st.session_state.mostrar_ruta:
-        # Aquí creamos un mapa base (puedes añadir tu lógica de rutas aquí)
-        m = folium.Map(location=[21.8823, -102.2826], zoom_start=13)
+    if st.session_state.ver_mapa:
+        st.subheader("Mapa de Ruta")
+        # Creamos el mapa (Coordenadas de Aguascalientes)
+        m = folium.Map(location=[21.8853, -102.2916], zoom_start=13)
+        folium.Marker([21.8853, -102.2916], popup="Punto A").add_to(m)
         
-        # Ejemplo de marcador
-        folium.Marker([21.8823, -102.2826], popup="Punto de Entrega").add_to(m)
-        
-        # Renderizamos el mapa
-        st_folium(m, width=700, height=450)
+        # Mostrar el mapa usando st_folium
+        st_folium(m, width=700, height=500)
     else:
-        st.info("Configura los puntos y haz clic en 'Calcular ruta' para ver el mapa.")
+        st.info("Haz clic en 'Calcular Ruta' para visualizar el mapa.")
 
-# --- 3. INTERFAZ SEGÚN ROL ---
-if rol == "Administrador":
-    st.write("---")
-    st.subheader("Panel de Control")
-    st.write("Aquí puedes ver todas las entregas activas.")
-elif rol == "Repartidor":
-    st.write("---")
-    st.subheader("Mis Pedidos Pendientes")
-    st.checkbox("Marcar pedido #123 como entregado")
+# 5. Interfaz para celular (ajuste visual)
+st.markdown("""
+    <style>
+    /* Esto ayuda a que en celular los elementos no se vean amontonados */
+    @media (max-width: 600px) {
+        .main {
+            padding: 10px;
+        }
+    }
+    </style>
+    """, unsafe_allow_html=True)
