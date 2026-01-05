@@ -7,167 +7,173 @@ from PIL import Image
 import io
 import base64
 
-# 1. CONFIGURACIÓN
-st.set_page_config(page_title="Delivery AGS Pro", layout="wide")
+# --- CONFIGURACIÓN E INTERFAZ ---
+st.set_page_config(page_title="Delivery AGS - Sistema Integral", layout="wide")
 
 # Función para validar email
 def es_correo_valido(correo):
     return re.match(r'^[\w\.-]+@[\w\.-]+\.\w+$', correo) is not None
 
-# Función para procesar imagen y convertirla en URL interna
+# Función para procesar foto de galería
 def procesar_foto(subida):
     if subida is not None:
         img = Image.open(subida)
         img.thumbnail((300, 300))
         buf = io.BytesIO()
         img.save(buf, format="PNG")
-        byte_im = buf.getvalue()
-        return f"data:image/png;base64,{base64.b64encode(byte_im).decode()}"
+        return f"data:image/png;base64,{base64.b64encode(buf.getvalue()).decode()}"
     return None
 
-# 2. BASE DE DATOS COMPARTIDA
+# --- MEMORIA COMPARTIDA (EL VÍNCULO TOTAL) ---
 @st.cache_resource
 def obtener_db():
     return {
         "pedidos": [],
         "usuarios": {
             "admin@delivery.com": {
-                "clave": "1234", 
-                "rol": "Administrador", 
-                "nombre": "Manuel Montes", 
-                "foto": "https://cdn-icons-png.flaticon.com/512/3135/3135715.png",
-                "disponible": True
+                "clave": "1234", "rol": "Administrador", "nombre": "Manuel Montes", 
+                "foto": "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
             }
-        }
+        },
+        "chats": {} # {email_cliente: [lista_mensajes]}
     }
 
 db = obtener_db()
 
-# 3. ESTADO DE SESIÓN
+# --- ESTADO DE SESIÓN ---
 if 'autenticado' not in st.session_state:
     st.session_state.autenticado = False
-    st.session_state.user_email = ""
-    st.session_state.user_rol = ""
+    st.session_state.u_email = ""
+    st.session_state.u_rol = ""
 
-# --- LOGIN / REGISTRO ---
+# --- PANTALLA DE ACCESO (LOGIN/REGISTRO) ---
 if not st.session_state.autenticado:
     izq, centro, der = st.columns([1, 2, 1])
     with centro:
         st.markdown("<h1 style='text-align: center;'>🚚 Delivery AGS</h1>", unsafe_allow_html=True)
-        tab_log, tab_reg = st.tabs(["🔑 Iniciar Sesión", "📝 Registro"])
+        t_log, t_reg = st.tabs(["🔑 Iniciar Sesión", "📝 Registrarse"])
         
-        with tab_log:
-            e_l = st.text_input("Correo:", key="l_email")
-            p_l = st.text_input("Contraseña:", type="password", key="l_pass")
+        with t_log:
+            e_l = st.text_input("Correo:", key="l_e")
+            p_l = st.text_input("Contraseña:", type="password", key="l_p")
             if st.button("Entrar", use_container_width=True):
                 if e_l in db["usuarios"] and db["usuarios"][e_l]["clave"] == p_l:
                     st.session_state.autenticado = True
-                    st.session_state.user_email = e_l
-                    st.session_state.user_rol = db["usuarios"][e_l]["rol"]
+                    st.session_state.u_email = e_l
+                    st.session_state.u_rol = db["usuarios"][e_l]["rol"]
                     st.rerun()
                 else: st.error("Datos incorrectos")
 
-        with tab_reg:
-            r_r = st.selectbox("Rol", ["Cliente", "Repartidor"], key="r_rol")
-            e_r = st.text_input("Correo electrónico:", key="r_email")
-            n_r = st.text_input("Nombre Completo:", key="r_name")
-            p_r = st.text_input("Contraseña:", type="password", key="r_pass")
+        with t_reg:
+            st.info("Clientes y Repartidores: Regístrense aquí")
+            r_r = st.selectbox("¿Qué serás?", ["Cliente", "Repartidor"], key="r_r")
+            e_r = st.text_input("Correo:", key="r_e")
+            n_r = st.text_input("Nombre Público:", key="r_n")
+            p_r = st.text_input("Contraseña:", type="password", key="r_p")
             if st.button("Crear Cuenta", use_container_width=True):
                 if es_correo_valido(e_r) and n_r and p_r:
-                    db["usuarios"][e_r] = {
-                        "clave": p_r, "rol": r_r, "nombre": n_r, 
-                        "foto": "https://cdn-icons-png.flaticon.com/512/149/149071.png",
-                        "disponible": True
-                    }
-                    st.success("¡Registro exitoso! Ya puedes entrar.")
-                else: st.warning("Datos incompletos o correo inválido.")
+                    db["usuarios"][e_r] = {"clave": p_r, "rol": r_r, "nombre": n_r, "foto": "https://cdn-icons-png.flaticon.com/512/149/149071.png", "disponible": True}
+                    st.success("¡Cuenta creada! Ya puedes entrar.")
+                else: st.error("Datos inválidos.")
     st.stop()
 
-# --- BARRA LATERAL (Navegación Limpia) ---
-u_info = db["usuarios"][st.session_state.user_email]
+# --- NAVEGACIÓN SEGÚN ROL ---
+u_info = db["usuarios"][st.session_state.u_email]
+
 with st.sidebar:
     st.image(u_info["foto"], width=100)
     st.title(u_info["nombre"])
-    st.caption(f"Rol: {st.session_state.user_rol}")
+    st.write(f"💼 {st.session_state.u_rol}")
     st.divider()
     
-    # Navegación
-    menu = st.radio("Ir a:", ["🏠 Inicio", "👤 Mi Perfil"])
+    # Menú inteligente: El cliente no ve las opciones del staff
+    opciones = ["🏠 Inicio", "💬 Chat de Soporte", "👤 Mi Perfil"]
+    menu = st.radio("Ir a:", opciones)
     
-    if st.button("Cerrar Sesión", use_container_width=True):
+    if st.button("Cerrar Sesión"):
         st.session_state.autenticado = False
         st.rerun()
 
-# --- VISTA: MI PERFIL (GESTIÓN TOTAL) ---
+# --- SECCIÓN: MI PERFIL (GESTIÓN DE CUENTA) ---
 if menu == "👤 Mi Perfil":
-    st.title("⚙️ Configuración de Mi Cuenta")
-    col_f, col_d = st.columns([1, 2])
-    
-    with col_f:
-        st.image(u_info["foto"], width=200)
-        archivo_foto = st.file_uploader("Actualizar foto de perfil", type=['png', 'jpg', 'jpeg'])
-        if archivo_foto:
-            nueva_foto = procesar_foto(archivo_foto)
-            if st.button("Guardar Nueva Foto"):
-                u_info["foto"] = nueva_foto
-                st.success("Foto actualizada.")
-                st.rerun()
-    
-    with col_d:
-        with st.form("perfil_form"):
-            st.subheader("Datos Personales")
-            nuevo_nom = st.text_input("Nombre para mostrar", value=u_info["nombre"])
-            nueva_clv = st.text_input("Nueva contraseña (deja en blanco para no cambiar)", type="password")
-            
-            if st.session_state.user_rol == "Repartidor":
-                st.divider()
-                st.subheader("Estado de Trabajo")
-                disp = st.toggle("Disponible para recibir pedidos", value=u_info.get("disponible", True))
-                u_info["disponible"] = disp
-            
-            if st.form_submit_button("Guardar Cambios"):
-                u_info["nombre"] = nuevo_nom
-                if nueva_clv: u_info["clave"] = nueva_clv
-                st.success("Información actualizada correctamente.")
-                st.rerun()
+    st.header("Configuración de Cuenta")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Foto de Perfil")
+        archivo = st.file_uploader("Subir desde galería", type=['jpg', 'png', 'jpeg'])
+        if archivo:
+            u_info["foto"] = procesar_foto(archivo)
+            st.success("¡Foto actualizada!")
+            st.rerun()
+    with col2:
+        st.subheader("Datos Personales")
+        u_info["nombre"] = st.text_input("Nombre de Usuario", value=u_info["nombre"])
+        u_info["clave"] = st.text_input("Cambiar Contraseña", value=u_info["clave"], type="password")
+        if st.session_state.u_rol == "Repartidor":
+            u_info["disponible"] = st.toggle("Estoy Disponible", value=u_info.get("disponible", True))
+        st.button("Guardar Cambios")
+
+# --- SECCIÓN: CHAT (VINCULADO) ---
+elif menu == "💬 Chat de Soporte":
+    st.header("Chat de Ayuda")
+    # Si es cliente, habla con el admin. Si es admin, ve todos los chats.
+    if st.session_state.u_rol == "Cliente":
+        cl_email = st.session_state.u_email
+        if cl_email not in db["chats"]: db["chats"][cl_email] = []
         
-        if st.session_state.user_rol == "Cliente":
-            st.warning("⚠️ ¿Tienes problemas con un pedido?")
-            if st.button("Contactar Soporte"):
-                st.info("Un administrador se pondrá en contacto contigo pronto.")
-
-# --- VISTA: INICIO (FUNCIONALIDAD SEGÚN ROL) ---
-elif menu == "🏠 Inicio":
-    if st.session_state.user_rol == "Administrador":
-        st.title(f"🛠 Panel Maestro - {u_info['nombre']}")
-        # Aquí va la lógica de crear pedidos que ya teníamos
-        c1, c2 = st.columns([1, 2])
-        with c1:
-            st.subheader("Nuevo Pedido")
-            clientes = {u['nombre']: k for k, u in db["usuarios"].items() if u['rol'] == 'Cliente'}
-            reps = {u['nombre']: k for k, u in db["usuarios"].items() if u['rol'] == 'Repartidor' and u.get("disponible", True)}
+        for m in db["chats"][cl_email]:
+            st.chat_message("user" if m['autor'] == "Cliente" else "assistant").write(f"**{m['autor']}:** {m['txt']}")
+        
+        msg = st.chat_input("Escribe tu mensaje al administrador...")
+        if msg:
+            db["chats"][cl_email].append({"autor": "Cliente", "txt": msg})
+            st.rerun()
             
-            with st.form("p_admin_form"):
-                cl_sel = st.selectbox("Seleccionar Cliente", list(clientes.keys()) if clientes else ["Sin clientes"])
-                direc = st.text_input("Dirección de destino")
-                rep_sel = st.selectbox("Asignar Repartidor (Solo disponibles)", list(reps.keys()) if reps else ["Sin repartidores"])
-                if st.form_submit_button("Crear Envío"):
-                    db["pedidos"].append({
-                        "id": len(db["pedidos"])+1, "cliente_nombre": cl_sel, "cliente_email": clientes[cl_sel],
-                        "direccion": direc, "rep_email": reps[rep_sel], "estado": "En camino"
-                    })
+    elif st.session_state.u_rol == "Administrador":
+        if not db["chats"]: st.info("No hay mensajes de clientes.")
+        for cl_email, msgs in db["chats"].items():
+            with st.expander(f"Chat con {db['usuarios'][cl_email]['nombre']}"):
+                for m in msgs: st.write(f"**{m['autor']}:** {m['txt']}")
+                resp = st.text_input("Responder:", key=f"res_{cl_email}")
+                if st.button("Enviar", key=f"btn_{cl_email}"):
+                    db["chats"][cl_email].append({"autor": "Admin", "txt": resp})
                     st.rerun()
-        with c2:
-            st.subheader("Mapa de Operaciones")
-            m = folium.Map(location=[21.88, -102.29], zoom_start=12)
-            st_folium(m, height=400, key="mapa_admin")
 
-    elif st.session_state.user_rol == "Repartidor":
-        st.title("🛵 Tus Rutas Activas")
-        # Mostrar pedidos asignados al email logueado
-        ...
+# --- SECCIÓN: INICIO (ESTRATEGIA STAFF vs CLIENTE) ---
+elif menu == "🏠 Inicio":
+    if st.session_state.u_rol == "Administrador":
+        st.title("Panel de Control Staff")
+        # Aquí el Admin crea pedidos (SÓLO VE NOMBRES)
+        clientes_nombres = {u['nombre']: k for k, u in db["usuarios"].items() if u['rol'] == 'Cliente'}
+        reps_nombres = {u['nombre']: k for k, u in db["usuarios"].items() if u['rol'] == 'Repartidor' and u.get('disponible', True)}
+        
+        with st.form("crear_pedido"):
+            c_sel = st.selectbox("Cliente", list(clientes_nombres.keys()))
+            dire = st.text_input("Dirección de Entrega")
+            r_sel = st.selectbox("Repartidor", list(reps_nombres.keys()))
+            if st.form_submit_button("Lanzar Pedido"):
+                db["pedidos"].append({
+                    "id": len(db["pedidos"])+1, "cliente_email": clientes_nombres[c_sel],
+                    "cliente_nombre": c_sel, "direccion": dire, "rep_email": reps_nombres[r_sel], "estado": "En camino"
+                })
+                st.rerun()
+        st.write("### Pedidos Activos")
+        st.table(db["pedidos"])
 
-    elif st.session_state.user_rol == "Cliente":
-        st.title("📦 Seguimiento de mi Pedido")
-        # Mostrar mapa y estado del pedido
-        ...
+    elif st.session_state.u_rol == "Repartidor":
+        st.title("Mis Entregas")
+        mis_v = [p for p in db["pedidos"] if p["rep_email"] == st.session_state.u_email and p["estado"] == "En camino"]
+        for p in mis_v:
+            st.info(f"Pedido #{p['id']} para {p['cliente_nombre']}")
+            if st.button(f"Entregado #{p['id']}"):
+                p["estado"] = "Entregado"
+                st.rerun()
+
+    elif st.session_state.u_rol == "Cliente":
+        st.title("Rastreo de mi Pedido")
+        mi_p = next((p for p in db["pedidos"] if p["cliente_email"] == st.session_state.u_email and p["estado"] == "En camino"), None)
+        if mi_p:
+            st.success(f"Tu pedido va hacia: {mi_p['direccion']}")
+            st.metric("Estado", mi_p['estado'])
+        else:
+            st.info("No tienes pedidos activos en este momento.")
