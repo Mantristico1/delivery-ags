@@ -1,111 +1,82 @@
 import streamlit as st
 import folium
 from streamlit_folium import st_folium
-import time
 
-# 1. Configuración de página
-st.set_page_config(page_title="Delivery AGS - Sistema Real", layout="wide")
+# 1. CONFIGURACIÓN DE PÁGINA
+st.set_page_config(page_title="Delivery AGS", layout="wide")
 
-# 2. INICIALIZACIÓN DE MEMORIA (Session State)
-# Esto guarda las rutas para que no se borren al interactuar
+# 2. MEMORIA DE LA APP (Session State)
 if 'lista_rutas' not in st.session_state:
-    st.session_state.lista_rutas = []  # Lista vacía de rutas
+    st.session_state.lista_rutas = []
 
-# 3. BARRA LATERAL - SELECTOR DE ROL
+# 3. BARRA LATERAL (Selector de Rol)
 with st.sidebar:
-    st.title("👤 Acceso")
-    rol = st.selectbox("Selecciona tu rol:", ["Administrador", "Repartidor", "Cliente"])
+    st.title("👤 Panel de Acceso")
+    rol = st.selectbox("¿Quién eres?", ["Administrador", "Repartidor", "Cliente"])
     st.divider()
-    if st.button("Limpiar todos los datos"):
+    if st.button("🗑️ Borrar todas las rutas"):
         st.session_state.lista_rutas = []
         st.rerun()
 
-# --- VISTA: ADMINISTRADOR (Crea las rutas) ---
+# --- VISTA: ADMINISTRADOR ---
 if rol == "Administrador":
-    st.title("🛠 Panel de Administración")
-    col1, col2 = st.columns([1, 2])
+    st.title("🛠 Configuración de Entregas")
+    col1, col2 = st.columns([1, 1])
 
     with col1:
-        st.subheader("Crear Nueva Entrega")
-        with st.form("nueva_ruta_form", clear_on_submit=True):
-            origen = st.text_input("Punto de Origen")
-            destino = st.text_input("Punto de Destino")
-            cliente = st.text_input("Nombre del Cliente")
-            enviar = st.form_submit_button("Añadir Ruta")
+        st.subheader("Añadir Nueva Ruta")
+        with st.form("form_ruta", clear_on_submit=True):
+            destino = st.text_input("Dirección de destino:")
+            cliente = st.text_input("Nombre del cliente:")
+            boton_crear = st.form_submit_button("➕ Agregar a la lista")
             
-            if enviar and origen and destino:
-                nueva = {
-                    "id": len(st.session_state.lista_rutas) + 1,
-                    "origen": origen,
-                    "destino": destino,
-                    "cliente": cliente,
-                    "estado": "En camino",
-                    "tiempo_estimado": "15-20 min"
-                }
+            if boton_crear and destino:
+                nueva = {"id": len(st.session_state.lista_rutas)+1, "destino": destino, "cliente": cliente}
                 st.session_state.lista_rutas.append(nueva)
-                st.success("Ruta añadida con éxito")
+                st.success("Ruta añadida")
                 st.rerun()
 
     with col2:
-        st.subheader("Rutas Activas")
-        if not st.session_state.lista_rutas:
-            st.info("No hay rutas creadas.")
+        st.subheader("Rutas en Sistema")
         for r in st.session_state.lista_rutas:
-            with st.expander(f"📦 Pedido #{r['id']} - {r['cliente']}"):
-                st.write(f"**De:** {r['origen']} ⮕ **A:** {r['destino']}")
-                # Mapa individual por ruta
-                m = folium.Map(location=[21.8853, -102.2916], zoom_start=12)
-                folium.Marker([21.8853, -102.2916], tooltip="Origen").add_to(m)
-                st_folium(m, height=200, key=f"map_admin_{r['id']}")
+            st.info(f"📦 **#{r['id']}** - {r['cliente']} a {r['destino']}")
 
-# --- VISTA: REPARTIDOR (Solo lo esencial) ---
+# --- VISTA: REPARTIDOR ---
 elif rol == "Repartidor":
-    st.title("🛵 Panel del Repartidor")
+    st.title("🛵 Vista del Repartidor")
     if not st.session_state.lista_rutas:
-        st.warning("No tienes entregas asignadas por ahora.")
+        st.warning("No tienes rutas asignadas.")
     else:
-        # El repartidor ve la última ruta asignada o elige una
-        ruta = st.session_state.lista_rutas[-1] 
-        st.metric("Siguiente Entrega", f"Cliente: {ruta['cliente']}")
-        st.write(f"📍 **Destino:** {ruta['destino']}")
+        # Mostramos la última ruta creada como prioridad
+        actual = st.session_state.lista_rutas[-1]
+        st.metric("Destino actual", actual['destino'])
+        st.write(f"Entregar a: **{actual['cliente']}**")
         
-        # Mapa grande para el repartidor
-        st.subheader("Mapa de Navegación")
+        # Mapa simplificado para el repartidor
         m_rep = folium.Map(location=[21.8853, -102.2916], zoom_start=14)
-        # Aquí simulamos la ubicación del repartidor y el destino
-        folium.Marker([21.8853, -102.2916], icon=folium.Icon(color='blue', icon='motorcycle', prefix='fa')).add_to(m_rep)
-        folium.Marker([21.8900, -102.2800], icon=folium.Icon(color='red')).add_to(m_rep)
+        folium.Marker([21.8853, -102.2916], popup="Tu ubicación", icon=folium.Icon(color='blue', icon='motorcycle', prefix='fa')).add_to(m_rep)
+        folium.Marker([21.8920, -102.2850], popup="Entrega", icon=folium.Icon(color='red')).add_to(m_rep)
+        st_folium(m_rep, width=700, height=400, key="mapa_rep")
         
-        st_folium(m_rep, width=800, height=500, key="mapa_repartidor")
-        
-        if st.button("Marcar como Entregado"):
-            st.balloons()
-            st.success("¡Entrega finalizada!")
+        if st.button("✅ Marcar como entregado"):
+            st.success("¡Entrega completada!")
 
-# --- VISTA: CLIENTE (Seguimiento) ---
+# --- VISTA: CLIENTE ---
 elif rol == "Cliente":
-    st.title("🏠 Seguimiento de tu Pedido")
+    st.title("🏠 Seguimiento de tu pedido")
     if not st.session_state.lista_rutas:
-        st.info("No tienes pedidos activos en este momento.")
+        st.info("No hay pedidos activos para tu usuario.")
     else:
-        ruta_cliente = st.session_state.lista_rutas[-1] # Ve su pedido
+        actual = st.session_state.lista_rutas[-1]
+        st.subheader(f"Hola {actual['cliente']}, tu pedido viene en camino.")
         
-        col_c1, col_c2 = st.columns(2)
-        with col_c1:
-            st.subheader("Estado del Envío")
-            st.write(f"**Estatus:** {ruta_cliente['estado']}")
-            st.write(f"**Tiempo estimado de llegada:** ⏳ {ruta_cliente['tiempo_estimado']}")
-            st.progress(65) # Barra de progreso visual
-            
-        with col_c2:
-            st.subheader("¿Dónde viene mi repartidor?")
-            m_cli = folium.Map(location=[21.8853, -102.2916], zoom_start=14)
-            # Icono del repartidor moviéndose
-            folium.Marker([21.8870, -102.2850], popup="Tu repartidor", 
-                          icon=folium.Icon(color='orange', icon='bicycle', prefix='fa')).add_to(m_cli)
-            st_folium(m_cli, height=300, key="mapa_cliente")
-            padding: 10px;
-        }
-    }
-    </style>
-    """, unsafe_allow_html=True)
+        c1, c2 = st.columns(2)
+        with c1:
+            st.write("⏱️ **Tiempo estimado:** 12 - 18 minutos")
+            st.progress(40) # Barra de progreso
+        
+        with c2:
+            # Mapa que muestra solo el avance
+            m_cli = folium.Map(location=[21.8880, -102.2880], zoom_start=14)
+            folium.Marker([21.8880, -102.2880], icon=folium.Icon(color='orange', icon='bicycle', prefix='fa')).add_to(m_cli)
+            st_folium(m_cli, width=400, height=250, key="mapa_cli")
