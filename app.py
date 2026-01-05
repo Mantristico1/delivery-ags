@@ -3,109 +3,114 @@ import folium
 from streamlit_folium import st_folium
 import urllib.parse
 
-# 1. CONFIGURACIÓN
-st.set_page_config(page_title="Delivery AGS", layout="wide")
+# 1. CONFIGURACIÓN E INTERFAZ CELULAR
+st.set_page_config(page_title="Delivery AGS Pro", layout="wide")
+st.markdown("<style>div.block-container{padding-top:2rem;}</style>", unsafe_allow_html=True)
 
-# 2. MEMORIA DE RUTAS
-if 'lista_rutas' not in st.session_state:
-    st.session_state.lista_rutas = []
+# 2. BASE DE DATOS EN MEMORIA
+if 'pedidos' not in st.session_state:
+    st.session_state.pedidos = []
 
 # 3. BARRA LATERAL
 with st.sidebar:
-    st.title("👤 Acceso")
-    rol = st.selectbox("¿Quién eres?", ["Administrador", "Repartidor", "Cliente"])
+    st.title("🚀 Delivery AGS")
+    rol = st.selectbox("Acceder como:", ["Administrador", "Repartidor", "Cliente"])
     st.divider()
-    if st.button("🗑️ Resetear Sistema"):
-        st.session_state.lista_rutas = []
-        st.rerun()
+    st.info("Sistema de logística en tiempo real")
 
-# --- VISTA: ADMINISTRADOR (Mapa Global y Gestión) ---
+# --- VISTA: ADMINISTRADOR ---
 if rol == "Administrador":
-    st.title("🛠 Panel de Control - Administrador")
+    st.title("🛠 Panel Maestro de Administración")
     
     col1, col2 = st.columns([1, 2])
     
     with col1:
-        st.subheader("Nueva Entrega")
-        with st.form("admin_form", clear_on_submit=True):
+        st.subheader("Registrar Nuevo Pedido")
+        with st.form("form_admin", clear_on_submit=True):
             cliente = st.text_input("Nombre del Cliente")
             direccion = st.text_input("Dirección de Destino")
-            crear = st.form_submit_button("Registrar Pedido")
+            id_repartidor = st.number_input("Asignar a Repartidor #", min_value=1, step=1)
+            submit = st.form_submit_button("Crear y Asignar")
             
-            if crear and cliente and direccion:
-                nueva = {
-                    "id": len(st.session_state.lista_rutas) + 1,
+            if submit and cliente and direccion:
+                nuevo = {
+                    "id": len(st.session_state.pedidos) + 1,
                     "cliente": cliente,
                     "direccion": direccion,
-                    "estado": "En Proceso"
+                    "repartidor": id_repartidor,
+                    "estado": "En preparación",
+                    "lat": 21.8853 + (len(st.session_state.pedidos) * 0.002), # Simulación movimiento
+                    "lon": -102.2916 + (len(st.session_state.pedidos) * 0.002)
                 }
-                st.session_state.lista_rutas.append(nueva)
+                st.session_state.pedidos.append(nueva)
                 st.rerun()
 
     with col2:
-        st.subheader("Mapa de Seguimiento Global")
-        # Mapa que muestra a todos los repartidores (Simulado)
+        st.subheader("Mapa de Rutas Activas")
         m_admin = folium.Map(location=[21.8853, -102.2916], zoom_start=13)
-        for r in st.session_state.lista_rutas:
-            # Marcador por cada pedido
+        for p in st.session_state.pedidos:
             folium.Marker(
-                [21.8853 + (r['id']*0.005), -102.2916], 
-                popup=f"Pedido #{r['id']} - {r['cliente']}",
-                icon=folium.Icon(color="red", icon="info-sign")
+                [p['lat'], p['lon']], 
+                popup=f"Pedido {p['id']} - Repartidor {p['repartidor']}",
+                icon=folium.Icon(color="blue", icon="motorcycle", prefix="fa")
             ).add_to(m_admin)
-        
-        st_folium(m_admin, width=800, height=400, key="mapa_admin")
-        
-        st.write("### Lista de Pedidos Actuales")
-        st.table(st.session_state.lista_rutas)
+        st_folium(m_admin, width="100%", height=400, key="admin_map")
 
-# --- VISTA: REPARTIDOR (Dirección + Google Maps) ---
+    st.subheader("Gestión de Pedidos")
+    for i, p in enumerate(st.session_state.pedidos):
+        c1, c2, c3, c4 = st.columns([1, 2, 2, 1])
+        c1.write(f"**ID:** {p['id']}")
+        c2.write(f"**Cliente:** {p['cliente']}")
+        c3.write(f"**Repartidor:** {p['repartidor']}")
+        if c4.button("❌ Borrar", key=f"del_{i}"):
+            st.session_state.pedidos.pop(i)
+            st.rerun()
+
+# --- VISTA: REPARTIDOR ---
 elif rol == "Repartidor":
-    st.title("🛵 Mis Entregas")
-    if not st.session_state.lista_rutas:
-        st.info("No hay pedidos pendientes.")
-    else:
-        for r in st.session_state.lista_rutas:
-            with st.expander(f"📦 PEDIDO #{r['id']} - {r['cliente']}", expanded=True):
-                st.write(f"📍 **Dirección:** {r['direccion']}")
-                
-                # CREAR LINK DE GOOGLE MAPS
-                query = urllib.parse.quote(r['direccion'])
-                google_maps_url = f"https://www.google.com/maps/search/?api=1&query={query}"
-                
-                st.markdown(f"""
-                    <a href="{google_maps_url}" target="_blank">
-                        <button style="background-color: #4CAF50; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer;">
-                            📍 Abrir en Google Maps
-                        </button>
-                    </a>
-                """, unsafe_allow_html=True)
-                
-                if st.button(f"Finalizar Entrega #{r['id']}", key=f"btn_{r['id']}"):
-                    st.success(f"Pedido #{r['id']} entregado.")
-
-# --- VISTA: CLIENTE (Búsqueda por nombre) ---
-elif rol == "Cliente":
-    st.title("🏠 Rastrea tu Pedido")
-    nombre_buscar = st.text_input("Introduce tu nombre para buscar tu pedido:")
+    st.title("🛵 Panel de Reparto")
+    mi_id = st.number_input("Ingresa tu número de repartidor para ver tus entregas:", min_value=1, step=1)
     
-    if nombre_buscar:
-        # Buscamos el pedido que coincida con el nombre
-        pedido_encontrado = next((r for r in st.session_state.lista_rutas if nombre_buscar.lower() in r['cliente'].lower()), None)
+    mis_entregas = [p for p in st.session_state.pedidos if p['repartidor'] == mi_id]
+    
+    if not mis_entregas:
+        st.warning(f"Repartidor #{mi_id}, no tienes entregas asignadas.")
+    else:
+        for p in mis_entregas:
+            with st.expander(f"📦 Pedido #{p['id']} - {p['cliente']}", expanded=True):
+                st.write(f"📍 **Destino:** {p['direccion']}")
+                
+                # Google Maps Link
+                url = f"https://www.google.com/maps/search/?api=1&query={urllib.parse.quote(p['direccion'])}"
+                st.markdown(f'<a href="{url}" target="_blank"><button style="width:100%; background-color:#4CAF50; color:white; padding:10px; border:none; border-radius:5px;">📍 Navegar en Google Maps</button></a>', unsafe_allow_html=True)
+                
+                if st.button(f"Marcar Entregado #{p['id']}"):
+                    st.session_state.pedidos = [pedido for pedido in st.session_state.pedidos if pedido['id'] != p['id']]
+                    st.success("¡Entrega confirmada!")
+                    st.rerun()
+
+# --- VISTA: CLIENTE ---
+elif rol == "Cliente":
+    st.title("🏠 Rastreo de Pedido")
+    nombre = st.text_input("Escribe tu nombre tal cual lo registraste:")
+    
+    if nombre:
+        pedido = next((p for p in st.session_state.pedidos if nombre.lower() in p['cliente'].lower()), None)
         
-        if pedido_encontrado:
-            st.success(f"¡Hola {pedido_encontrado['cliente']}! Encontramos tu pedido.")
-            col_c1, col_c2 = st.columns(2)
+        if pedido:
+            st.success(f"¡Hola {pedido['cliente']}! Tu repartidor #{pedido['repartidor']} va en camino.")
             
-            with col_c1:
-                st.metric("Estado", pedido_encontrado['estado'])
-                st.write("⏳ **Tiempo estimado:** 15 min")
-                st.progress(60)
+            # Datos de tiempo
+            c1, c2 = st.columns(2)
+            c1.metric("Tiempo Estimado", "12 min")
+            c2.metric("Distancia", "2.4 km")
             
-            with col_c2:
-                st.subheader("Ubicación del repartidor")
-                m_cliente = folium.Map(location=[21.8853, -102.2916], zoom_start=15)
-                folium.Marker([21.8853, -102.2916], icon=folium.Icon(color='orange', icon='motorcycle', prefix='fa')).add_to(m_cliente)
-                st_folium(m_cliente, height=300, key="mapa_cliente")
-        else:
-            st.error("No se encontró ningún pedido con ese nombre.")
+            # Mapa de rastreo
+            st.subheader("Mapa en Tiempo Real")
+            m_cli = folium.Map(location=[pedido['lat'], pedido['lon']], zoom_start=15)
+            # Marcador Cliente
+            folium.Marker([21.8820, -102.2900], popup="Tu Casa", icon=folium.Icon(color="red", icon="home")).add_to(m_cli)
+            # Marcador Repartidor
+            folium.Marker([pedido['lat'], pedido['lon']], popup="Tu Repartidor", icon=folium.Icon(color="orange", icon="motorcycle", prefix="fa")).add_to(m_cli)
+            
+            st_folium(m_cli, width="100
