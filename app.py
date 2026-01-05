@@ -4,147 +4,132 @@ from streamlit_folium import st_folium
 import urllib.parse
 
 # 1. CONFIGURACIÓN
-st.set_page_config(page_title="Delivery AGS - Login System", layout="wide")
+st.set_page_config(page_title="Delivery AGS - Pro System", layout="wide")
 
-# 2. MEMORIA GLOBAL COMPARTIDA (Base de datos simulada)
+# 2. BASE DE DATOS COMPARTIDA
 @st.cache_resource
-def obtener_datos():
+def obtener_db():
     return {
         "pedidos": [],
         "usuarios": {
-            "admin": "1234", # Contraseña del administrador
+            "Manuel Montes": {"clave": "1234", "rol": "Administrador", "foto": "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"}
         }
     }
 
-db = obtener_datos()
+db = obtener_db()
 
-# 3. SISTEMA DE SESIÓN (Login local)
-if 'user_rol' not in st.session_state:
-    st.session_state.user_rol = None
-if 'user_name' not in st.session_state:
-    st.session_state.user_name = None
+# 3. ESTADO DE SESIÓN
+if 'autenticado' not in st.session_state:
+    st.session_state.autenticado = False
+    st.session_state.user_name = ""
+    st.session_state.user_rol = ""
 
-# --- PANTALLA DE LOGIN ---
-if st.session_state.user_rol is None:
-    st.title("🔐 Acceso al Sistema Delivery AGS")
-    col_l, col_r = st.columns(2)
-    
-    with col_l:
-        rol = st.selectbox("Tipo de Usuario", ["Cliente", "Repartidor", "Administrador"])
-        nombre = st.text_input("Nombre de Usuario / ID")
-        password = st.text_input("Contraseña", type="password")
+# --- PANTALLA DE ACCESO ---
+if not st.session_state.autenticado:
+    izq, centro, der = st.columns([1, 2, 1])
+    with centro:
+        st.markdown("<h1 style='text-align: center;'>🚚 Delivery AGS</h1>", unsafe_allow_html=True)
+        tab_login, tab_registro = st.tabs(["🔑 Iniciar Sesión", "📝 Registro"])
         
-        if st.button("Entrar"):
-            if rol == "Administrador" and password == db["usuarios"]["admin"]:
-                st.session_state.user_rol = "Administrador"
-                st.session_state.user_name = "Admin"
-                st.rerun()
-            elif rol == "Administrador":
-                st.error("Contraseña de Admin incorrecta")
-            else:
-                # Registro simple para Cliente y Repartidor
-                st.session_state.user_rol = rol
-                st.session_state.user_name = nombre
-                st.rerun()
-    st.stop() # Detiene el código aquí si no hay login
+        with tab_login:
+            u_log = st.text_input("Usuario:", key="log_u")
+            p_log = st.text_input("Contraseña:", type="password", key="log_p")
+            if st.button("Entrar", use_container_width=True):
+                if u_log in db["usuarios"] and db["usuarios"][u_log]["clave"] == p_log:
+                    st.session_state.autenticado = True
+                    st.session_state.user_name = u_log
+                    st.session_state.user_rol = db["usuarios"][u_log]["rol"]
+                    st.rerun()
+                else:
+                    st.error("Credenciales incorrectas")
 
-# --- BARRA LATERAL (Salir) ---
+        with tab_registro:
+            rol_reg = st.selectbox("Rol", ["Cliente", "Repartidor"])
+            u_reg = st.text_input("Nuevo Usuario:", key="reg_u")
+            p_reg = st.text_input("Nueva Contraseña:", type="password", key="reg_p")
+            if st.button("Crear Cuenta", use_container_width=True):
+                if u_reg and p_reg and u_reg not in db["usuarios"]:
+                    db["usuarios"][u_reg] = {"clave": p_reg, "rol": rol_reg, "foto": "https://cdn-icons-png.flaticon.com/512/149/149071.png"}
+                    st.success("¡Cuenta creada! Inicia sesión.")
+                else:
+                    st.error("Error en el registro.")
+    st.stop()
+
+# --- BARRA LATERAL (Perfil y Navegación) ---
 with st.sidebar:
-    st.write(f"👤 Usuario: **{st.session_state.user_name}**")
-    st.write(f"🔰 Rol: **{st.session_state.user_rol}**")
+    # Mostrar foto de perfil
+    foto_actual = db["usuarios"][st.session_state.user_name].get("foto", "https://via.placeholder.com/150")
+    st.image(foto_actual, width=100)
+    st.title(f"Hola, {st.session_state.user_name}")
+    st.caption(f"Rol: {st.session_state.user_rol}")
+    
+    with st.expander("⚙️ Editar Perfil"):
+        nuevo_nom = st.text_input("Cambiar Nombre", value=st.session_state.user_name)
+        nueva_clv = st.text_input("Nueva Contraseña", type="password")
+        nueva_fot = st.text_input("URL de Foto de Perfil")
+        if st.button("Guardar Cambios"):
+            if nueva_clv: db["usuarios"][st.session_state.user_name]["clave"] = nueva_clv
+            if nueva_fot: db["usuarios"][st.session_state.user_name]["foto"] = nueva_fot
+            st.success("Datos actualizados")
+            st.rerun()
+            
     if st.button("Cerrar Sesión"):
-        st.session_state.user_rol = None
-        st.session_state.user_name = None
+        st.session_state.autenticado = False
         st.rerun()
 
-# --- VISTA: ADMINISTRADOR ---
+# --- VISTAS ---
 if st.session_state.user_rol == "Administrador":
-    st.title("🛠 Panel Maestro")
-    col1, col2 = st.columns([1, 2])
+    st.title("🛠 Panel de Administración")
+    tab_p, tab_u = st.tabs(["📦 Pedidos", "👥 Usuarios Registrados"])
     
-    with col1:
-        st.subheader("Registrar Nuevo Pedido")
-        with st.form("nuevo_p"):
-            c_nombre = st.text_input("Nombre del Cliente")
-            c_dir = st.text_input("Dirección")
-            id_r = st.number_input("ID Repartidor", min_value=1, step=1)
-            if st.form_submit_button("Crear"):
-                nuevo = {
-                    "id": len(db["pedidos"]) + 1,
-                    "cliente": c_nombre,
-                    "direccion": c_dir,
-                    "repartidor": id_r,
-                    "estado": "En Proceso",
-                    "lat": 21.8853, "lon": -102.2916
-                }
-                db["pedidos"].append(nuevo)
+    with tab_p:
+        c1, c2 = st.columns([1, 2])
+        with c1:
+            st.subheader("Nuevo Pedido")
+            with st.form("crear"):
+                cl = st.text_input("Cliente")
+                dr = st.text_input("Dirección")
+                re = st.selectbox("Asignar Repartidor", [u for u in db["usuarios"] if db["usuarios"][u]["rol"] == "Repartidor"])
+                if st.form_submit_button("Crear"):
+                    db["pedidos"].append({"id": len(db["pedidos"])+1, "cliente": cl, "direccion": dr, "repartidor": re, "estado": "En camino", "lat": 21.88, "lon": -102.29})
+                    st.rerun()
+        with c2:
+            st.subheader("Mapa Global")
+            m = folium.Map(location=[21.88, -102.29], zoom_start=12)
+            for p in db["pedidos"]:
+                folium.Marker([p['lat'], p['lon']], popup=p['cliente']).add_to(m)
+            st_folium(m, height=300)
+
+    with tab_u:
+        st.subheader("Base de Datos de Usuarios")
+        for user, info in db["usuarios"].items():
+            st.write(f"👤 **{user}** | Rol: `{info['rol']}`")
+            if st.button(f"Reiniciar Clave a {user}", key=f"res_{user}"):
+                db["usuarios"][user]["clave"] = "1234"
+                st.warning(f"Clave de {user} cambiada a 1234")
+
+elif st.session_state.user_rol == "Repartidor":
+    st.title("🛵 Panel de Reparto")
+    pedidos_mios = [p for p in db["pedidos"] if p["repartidor"] == st.session_state.user_name and p["estado"] == "En camino"]
+    
+    for p in pedidos_mios:
+        with st.expander(f"Pedido #{p['id']} - {p['cliente']}", expanded=True):
+            st.write(f"📍 {p['direccion']}")
+            if st.button("⚠️ Alerta: El cliente olvidó su contraseña / Ayuda", key=f"alt_{p['id']}"):
+                st.error("ALERTA ENVIADA: Se ha notificado al sistema sobre este usuario.")
+            if st.button("✅ Finalizar Entrega", key=f"fin_{p['id']}"):
+                p["estado"] = "Entregado"
                 st.rerun()
 
-    with col2:
-        st.subheader("Mapa Global")
-        m = folium.Map(location=[21.8853, -102.2916], zoom_start=13)
-        for p in db["pedidos"]:
-            if p["estado"] == "En Proceso":
-                folium.Marker([p['lat'], p['lon']], popup=p['cliente']).add_to(m)
-        st_folium(m, height=300, key="m_admin")
-
-    st.write("### Todos los Pedidos")
-    for i, p in enumerate(db["pedidos"]):
-        c1, c2, c3, c4 = st.columns(4)
-        c1.write(f"#{p['id']} {p['cliente']}")
-        c2.write(f"Rep: {p['repartidor']}")
-        c3.write(f"Estado: {p['estado']}")
-        if c4.button("❌ Borrar", key=f"del_{i}"):
-            db["pedidos"].pop(i)
-            st.rerun()
-
-# --- VISTA: REPARTIDOR ---
-elif st.session_state.user_rol == "Repartidor":
-    st.title(f"🛵 Entregas - Repartidor #{st.session_state.user_name}")
-    try:
-        mi_id = int(st.session_state.user_name)
-        entregas = [p for p in db["pedidos"] if p["repartidor"] == mi_id and p["estado"] == "En Proceso"]
-        
-        if not entregas:
-            st.info("No tienes rutas pendientes.")
-        else:
-            for p in entregas:
-                st.subheader(f"Pedido #{p['id']}")
-                st.write(f"Cliente: {p['cliente']} | Dir: {p['direccion']}")
-                
-                # Google Maps
-                q = urllib.parse.quote(p['direccion'])
-                st.markdown(f'[📍 Navegar](http://maps.google.com/?q={q})')
-                
-                if st.button("✅ Finalizar Entrega", key=f"fin_{p['id']}"):
-                    p["estado"] = "Entregado"
-                    st.rerun()
-    except:
-        st.error("Por favor, ingresa un número en tu nombre de usuario al entrar.")
-
-# --- VISTA: CLIENTE (Con Historial) ---
 elif st.session_state.user_rol == "Cliente":
-    st.title(f"🏠 Mis Pedidos - {st.session_state.user_name}")
-    
-    mis_pedidos = [p for p in db["pedidos"] if st.session_state.user_name.lower() in p["cliente"].lower()]
-    
-    if not mis_pedidos:
-        st.warning("No tienes historial de pedidos.")
-    else:
-        # Pestañas: Activo vs Historial
-        tab1, tab2 = st.tabs(["📍 Rastreo Actual", "📜 Historial"])
-        
-        with tab1:
-            activo = next((p for p in mis_pedidos if p["estado"] == "En Proceso"), None)
-            if activo:
-                st.success("¡Tu pedido está en camino!")
-                m_c = folium.Map(location=[activo['lat'], activo['lon']], zoom_start=15)
-                folium.Marker([activo['lat'], activo['lon']], icon=folium.Icon(color='orange', icon='motorcycle', prefix='fa')).add_to(m_c)
-                st_folium(m_c, height=300, key="m_cli")
-            else:
-                st.info("No tienes pedidos activos ahora mismo.")
-                
-        with tab2:
-            st.write("### Tus pedidos anteriores")
-            for p in mis_pedidos:
-                st.write(f"✅ Pedido #{p['id']} - Fecha: 05/01/24 - **{p['estado']}**")
+    st.title("🏠 Mi Seguimiento")
+    # Mostrar solo sus pedidos
+    mios = [p for p in db["pedidos"] if st.session_state.user_name.lower() in p['cliente'].lower()]
+    if mios:
+        activo = next((p for p in mios if p["estado"] == "En camino"), None)
+        if activo:
+            st.success("Tu pedido viene en camino")
+            m_c = folium.Map(location=[activo['lat'], activo['lon']], zoom_start=14)
+            folium.Marker([activo['lat'], activo['lon']], icon=folium.Icon(color='orange', icon='motorcycle', prefix='fa')).add_to(m_c)
+            st_folium(m_c, height=300)
+        st.table(mios)
