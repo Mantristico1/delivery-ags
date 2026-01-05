@@ -4,112 +4,147 @@ from streamlit_folium import st_folium
 import urllib.parse
 
 # 1. CONFIGURACIÓN
-st.set_page_config(page_title="Delivery AGS - Sistema Central", layout="wide")
+st.set_page_config(page_title="Delivery AGS - Login System", layout="wide")
 
-# 2. MEMORIA COMPARTIDA (Para que se vea igual en PC y Celular)
+# 2. MEMORIA GLOBAL COMPARTIDA (Base de datos simulada)
 @st.cache_resource
-def obtener_base_datos():
-    # Esta lista será la misma para todos los usuarios que entren al link
-    return []
+def obtener_datos():
+    return {
+        "pedidos": [],
+        "usuarios": {
+            "admin": "1234", # Contraseña del administrador
+        }
+    }
 
-pedidos_globales = obtener_base_datos()
+db = obtener_datos()
 
-# 3. BARRA LATERAL (Acceso restringido)
+# 3. SISTEMA DE SESIÓN (Login local)
+if 'user_rol' not in st.session_state:
+    st.session_state.user_rol = None
+if 'user_name' not in st.session_state:
+    st.session_state.user_name = None
+
+# --- PANTALLA DE LOGIN ---
+if st.session_state.user_rol is None:
+    st.title("🔐 Acceso al Sistema Delivery AGS")
+    col_l, col_r = st.columns(2)
+    
+    with col_l:
+        rol = st.selectbox("Tipo de Usuario", ["Cliente", "Repartidor", "Administrador"])
+        nombre = st.text_input("Nombre de Usuario / ID")
+        password = st.text_input("Contraseña", type="password")
+        
+        if st.button("Entrar"):
+            if rol == "Administrador" and password == db["usuarios"]["admin"]:
+                st.session_state.user_rol = "Administrador"
+                st.session_state.user_name = "Admin"
+                st.rerun()
+            elif rol == "Administrador":
+                st.error("Contraseña de Admin incorrecta")
+            else:
+                # Registro simple para Cliente y Repartidor
+                st.session_state.user_rol = rol
+                st.session_state.user_name = nombre
+                st.rerun()
+    st.stop() # Detiene el código aquí si no hay login
+
+# --- BARRA LATERAL (Salir) ---
 with st.sidebar:
-    st.title("🚀 Delivery AGS")
-    # El usuario debe elegir su rol, pero el cliente solo verá su parte
-    rol = st.selectbox("Acceso:", ["Cliente", "Repartidor", "Administrador"])
-    st.divider()
-    st.caption("v2.0 - Memoria en tiempo real")
+    st.write(f"👤 Usuario: **{st.session_state.user_name}**")
+    st.write(f"🔰 Rol: **{st.session_state.user_rol}**")
+    if st.button("Cerrar Sesión"):
+        st.session_state.user_rol = None
+        st.session_state.user_name = None
+        st.rerun()
 
 # --- VISTA: ADMINISTRADOR ---
-if rol == "Administrador":
-    st.title("🛠 Panel Maestro (Visible solo para Admin)")
+if st.session_state.user_rol == "Administrador":
+    st.title("🛠 Panel Maestro")
     col1, col2 = st.columns([1, 2])
     
     with col1:
         st.subheader("Registrar Nuevo Pedido")
-        with st.form("form_admin", clear_on_submit=True):
-            cliente = st.text_input("Nombre del Cliente")
-            direccion = st.text_input("Dirección de Destino")
-            id_rep = st.number_input("Asignar a Repartidor #", min_value=1, step=1)
-            submit = st.form_submit_button("Crear Pedido")
-            
-            if submit and cliente and direccion:
+        with st.form("nuevo_p"):
+            c_nombre = st.text_input("Nombre del Cliente")
+            c_dir = st.text_input("Dirección")
+            id_r = st.number_input("ID Repartidor", min_value=1, step=1)
+            if st.form_submit_button("Crear"):
                 nuevo = {
-                    "id": len(pedidos_globales) + 1,
-                    "cliente": cliente,
-                    "direccion": direccion,
-                    "repartidor": id_rep,
-                    "lat": 21.8853 + (len(pedidos_globales) * 0.005),
-                    "lon": -102.2916 + (len(pedidos_globales) * 0.005),
-                    "estado": "En camino"
+                    "id": len(db["pedidos"]) + 1,
+                    "cliente": c_nombre,
+                    "direccion": c_dir,
+                    "repartidor": id_r,
+                    "estado": "En Proceso",
+                    "lat": 21.8853, "lon": -102.2916
                 }
-                pedidos_globales.append(nuevo)
+                db["pedidos"].append(nuevo)
                 st.rerun()
 
     with col2:
         st.subheader("Mapa Global")
-        m_admin = folium.Map(location=[21.8853, -102.2916], zoom_start=13)
-        for p in pedidos_globales:
-            folium.Marker([p['lat'], p['lon']], 
-                          popup=f"Ped {p['id']} - Rep {p['repartidor']}",
-                          icon=folium.Icon(color="blue", icon="motorcycle", prefix="fa")).add_to(m_admin)
-        st_folium(m_admin, width=700, height=400, key="admin_map")
+        m = folium.Map(location=[21.8853, -102.2916], zoom_start=13)
+        for p in db["pedidos"]:
+            if p["estado"] == "En Proceso":
+                folium.Marker([p['lat'], p['lon']], popup=p['cliente']).add_to(m)
+        st_folium(m, height=300, key="m_admin")
 
-    st.subheader("Gestión de Pedidos")
-    for i, p in enumerate(pedidos_globales):
-        c1, c2, c3, c4 = st.columns([1, 2, 2, 1])
-        c1.write(f"**ID:** {p['id']}")
-        c2.write(f"**Cliente:** {p['cliente']}")
-        c3.write(f"**Repartidor:** {p['repartidor']}")
-        if c4.button("❌ Borrar", key=f"del_{p['id']}"):
-            pedidos_globales.pop(i)
+    st.write("### Todos los Pedidos")
+    for i, p in enumerate(db["pedidos"]):
+        c1, c2, c3, c4 = st.columns(4)
+        c1.write(f"#{p['id']} {p['cliente']}")
+        c2.write(f"Rep: {p['repartidor']}")
+        c3.write(f"Estado: {p['estado']}")
+        if c4.button("❌ Borrar", key=f"del_{i}"):
+            db["pedidos"].pop(i)
             st.rerun()
 
 # --- VISTA: REPARTIDOR ---
-elif rol == "Repartidor":
-    st.title("🛵 Panel de Reparto")
-    mi_id = st.number_input("Tu Número de Repartidor:", min_value=1, step=1)
-    
-    mis_entregas = [p for p in pedidos_globales if p['repartidor'] == mi_id]
-    
-    if not mis_entregas:
-        st.warning("No tienes pedidos asignados en este momento.")
-    else:
-        for p in mis_entregas:
-            with st.expander(f"📦 Pedido #{p['id']} - {p['cliente']}", expanded=True):
-                st.write(f"📍 **Destino:** {p['direccion']}")
-                query = urllib.parse.quote(p['direccion'])
-                url = f"https://www.google.com/maps/search/?api=1&query={query}"
-                st.markdown(f'<a href="{url}" target="_blank"><button style="width:100%; background-color:#4CAF50; color:white; padding:10px; border:none; border-radius:5px; cursor:pointer;">📍 Abrir Navegación GPS</button></a>', unsafe_allow_html=True)
-                
-                if st.button(f"Confirmar Entrega #{p['id']}"):
-                    pedidos_globales.remove(p)
-                    st.success("¡Pedido entregado y eliminado del sistema!")
-                    st.rerun()
-
-# --- VISTA: CLIENTE (Solo rastreo, nada más) ---
-elif rol == "Cliente":
-    st.title("🏠 Seguimiento de tu Entrega")
-    st.write("Escribe tu nombre para localizar a tu repartidor en el mapa.")
-    nombre = st.text_input("Nombre registrado:")
-    
-    if nombre:
-        pedido = next((p for p in pedidos_globales if nombre.lower() in p['cliente'].lower()), None)
-        if pedido:
-            st.success(f"¡Hola {pedido['cliente']}! Tu pedido está siendo entregado por el repartidor #{pedido['repartidor']}.")
-            
-            c1, c2 = st.columns(2)
-            c1.metric("Estatus", "En camino")
-            c2.metric("Llegada estimada", "10-15 min")
-            
-            # Mapa de rastreo
-            m_cli = folium.Map(location=[pedido['lat'], pedido['lon']], zoom_start=15)
-            # Ubicación casa (fija)
-            folium.Marker([21.8810, -102.2920], popup="Tu Casa", icon=folium.Icon(color="red", icon="home")).add_to(m_cli)
-            # Ubicación repartidor (dinámica según admin)
-            folium.Marker([pedido['lat'], pedido['lon']], popup="Tu Repartidor", icon=folium.Icon(color="orange", icon="motorcycle", prefix="fa")).add_to(m_cli)
-            st_folium(m_cli, width=700, height=400, key="cli_map")
+elif st.session_state.user_rol == "Repartidor":
+    st.title(f"🛵 Entregas - Repartidor #{st.session_state.user_name}")
+    try:
+        mi_id = int(st.session_state.user_name)
+        entregas = [p for p in db["pedidos"] if p["repartidor"] == mi_id and p["estado"] == "En Proceso"]
+        
+        if not entregas:
+            st.info("No tienes rutas pendientes.")
         else:
-            st.error("No hay pedidos activos con ese nombre. Verifica con el administrador.")
+            for p in entregas:
+                st.subheader(f"Pedido #{p['id']}")
+                st.write(f"Cliente: {p['cliente']} | Dir: {p['direccion']}")
+                
+                # Google Maps
+                q = urllib.parse.quote(p['direccion'])
+                st.markdown(f'[📍 Navegar](http://maps.google.com/?q={q})')
+                
+                if st.button("✅ Finalizar Entrega", key=f"fin_{p['id']}"):
+                    p["estado"] = "Entregado"
+                    st.rerun()
+    except:
+        st.error("Por favor, ingresa un número en tu nombre de usuario al entrar.")
+
+# --- VISTA: CLIENTE (Con Historial) ---
+elif st.session_state.user_rol == "Cliente":
+    st.title(f"🏠 Mis Pedidos - {st.session_state.user_name}")
+    
+    mis_pedidos = [p for p in db["pedidos"] if st.session_state.user_name.lower() in p["cliente"].lower()]
+    
+    if not mis_pedidos:
+        st.warning("No tienes historial de pedidos.")
+    else:
+        # Pestañas: Activo vs Historial
+        tab1, tab2 = st.tabs(["📍 Rastreo Actual", "📜 Historial"])
+        
+        with tab1:
+            activo = next((p for p in mis_pedidos if p["estado"] == "En Proceso"), None)
+            if activo:
+                st.success("¡Tu pedido está en camino!")
+                m_c = folium.Map(location=[activo['lat'], activo['lon']], zoom_start=15)
+                folium.Marker([activo['lat'], activo['lon']], icon=folium.Icon(color='orange', icon='motorcycle', prefix='fa')).add_to(m_c)
+                st_folium(m_c, height=300, key="m_cli")
+            else:
+                st.info("No tienes pedidos activos ahora mismo.")
+                
+        with tab2:
+            st.write("### Tus pedidos anteriores")
+            for p in mis_pedidos:
+                st.write(f"✅ Pedido #{p['id']} - Fecha: 05/01/24 - **{p['estado']}**")
