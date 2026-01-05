@@ -7,238 +7,208 @@ from PIL import Image
 import io
 import base64
 
-# --- 1. CONFIGURACIÓN Y ESTILO ---
-st.set_page_config(page_title="AGS Food & Delivery", layout="wide")
+# --- 1. CONFIGURACIÓN COMPARTIDA ---
+st.set_page_config(page_title="AGS Delivery - Sistema Integral", layout="wide")
 
-# Lógica de Modo Claro/Oscuro (Sencilla para Streamlit)
-if 'tema_oscuro' not in st.session_state:
-    st.session_state.tema_oscuro = False
-
-def alternar_tema():
-    st.session_state.tema_oscuro = not st.session_state.tema_oscuro
-
-# --- 2. BASE DE DATOS MAESTRA (VINCULADA) ---
 @st.cache_resource
-def inicializar_sistema():
+def obtener_db():
     return {
         "usuarios": {
             "admin@delivery.com": {"clave": "1234", "rol": "Administrador", "nombre": "Manuel Montes", "foto": None, "activo": True},
         },
         "menu": [
-            {"id": 1, "nombre": "Hamburguesa AGS", "desc": "Carne premium y queso", "precio": 120.0, "foto": None},
-            {"id": 2, "nombre": "Tacos al Pastor", "desc": "Orden de 5 tacos", "precio": 85.0, "foto": None}
+            {"id": 1, "nombre": "Hamburguesa AGS", "desc": "Carne premium y queso", "precio": 120.0, "foto": None}
         ],
         "pedidos": [],
-        "chats": {}, # {id_pedido: [{"autor": "", "rol": "", "txt": ""}]}
-        "carrito": {} # {email_cliente: [items]}
+        "chats": {} 
     }
 
-db = inicializar_sistema()
+db = obtener_db()
 
-# --- 3. FUNCIONES DE UTILIDAD ---
-def procesar_imagen(archivo):
-    if archivo:
-        img = Image.open(archivo)
-        img.thumbnail((400, 400))
-        buf = io.BytesIO()
-        img.save(buf, format="PNG")
-        return f"data:image/png;base64,{base64.b64encode(buf.getvalue()).decode()}"
-    return None
-
-# --- 4. SISTEMA DE AUTENTICACIÓN ---
+# --- 2. LOGUEO Y SESIÓN ---
 if 'auth' not in st.session_state:
     st.session_state.auth = False
     st.session_state.email = ""
 
 if not st.session_state.auth:
-    st.title("🚚 AGS Delivery System")
-    t1, t2 = st.tabs(["Ingresar", "Registrarse (Solo Clientes)"])
-    with t1:
+    izq, centro, der = st.columns([1, 2, 1])
+    with centro:
+        st.title("🚚 AGS Delivery")
+        # Quitamos pestañas de registro, solo login directo
         e = st.text_input("Email")
-        p = st.text_input("Clave", type="password")
-        if st.button("Entrar"):
+        p = st.text_input("Contraseña", type="password")
+        if st.button("Entrar", use_container_width=True):
             user = db["usuarios"].get(e)
             if user and user["clave"] == p and user["activo"]:
                 st.session_state.auth = True
                 st.session_state.email = e
                 st.rerun()
-            else: st.error("Acceso denegado o cuenta desactivada.")
-    with t2:
-        st.write("Crea tu cuenta de cliente")
-        new_e = st.text_input("Tu Email")
-        new_n = st.text_input("Tu Nombre")
-        new_p = st.text_input("Tu Clave", type="password")
-        if st.button("Crear Cuenta"):
-            if new_e and new_n and new_p:
-                db["usuarios"][new_e] = {"clave": new_p, "rol": "Cliente", "nombre": new_n, "foto": None, "activo": True}
-                st.success("¡Registrado!")
+            else: st.error("Acceso incorrecto o cuenta desactivada.")
+        
+        with st.expander("¿No tienes cuenta? Regístrate aquí"):
+            ne = st.text_input("Nuevo Email")
+            nn = st.text_input("Tu Nombre")
+            np = st.text_input("Tu Clave", type="password")
+            if st.button("Crear Cuenta de Cliente"):
+                db["usuarios"][ne] = {"clave": np, "rol": "Cliente", "nombre": nn, "foto": None, "activo": True}
+                st.success("¡Listo! Ya puedes iniciar sesión.")
     st.stop()
 
 u_info = db["usuarios"][st.session_state.email]
 u_rol = u_info["rol"]
 
-# --- 5. SIDEBAR Y MODO OSCURO ---
+# --- 3. BARRA LATERAL (NAVEGACIÓN) ---
 with st.sidebar:
-    st.image(u_info["foto"] if u_info["foto"] else "https://cdn-icons-png.flaticon.com/512/149/149071.png", width=100)
-    st.title(u_info["nombre"])
-    st.write(f"Rol: **{u_rol}**")
+    st.image(u_info["foto"] if u_info["foto"] else "https://cdn-icons-png.flaticon.com/512/149/149071.png", width=80)
+    st.subheader(u_info["nombre"])
     
-    # Selector de Navegación según Rol
-    paginas = ["🏠 Inicio", "⚙️ Mi Perfil"]
-    if u_rol in ["Administrador", "Trabajador"]:
-        paginas += ["🍴 Gestionar Menú", "📊 Panel Staff", "👥 Usuarios"]
-    elif u_rol == "Cliente":
-        paginas += ["🛒 Comprar Comida", "📜 Mis Tickets"]
-    
-    opcion = st.radio("Navegar", paginas)
-    
-    st.divider()
-    if st.button("🌓 Cambiar Tema"):
-        alternar_tema()
-    if st.button("🚪 Salir"):
+    # Navegación por Rol
+    if u_rol == "Cliente":
+        menu = st.radio("Menú", ["🏠 Inicio (Menú)", "🛒 Mi Carrito y Rastreo", "👤 Perfil"])
+    elif u_rol == "Trabajador":
+        menu = st.radio("Menú", ["🏠 Pedidos Staff", "🍴 Gestionar Menú", "💬 Chats", "👤 Perfil"])
+    elif u_rol == "Administrador":
+        menu = st.radio("Menú", ["🏠 Panel Staff", "👥 Usuarios", "🍴 Menú", "👤 Perfil"])
+
+    if st.button("Cerrar Sesión"):
         st.session_state.auth = False
         st.rerun()
 
-# --- 6. LÓGICA DE ROLES ---
-
-# A. CLIENTE: COMPRA Y TICKET
-if opcion == "🛒 Comprar Comida":
-    st.title("🍴 Menú Digital")
-    cols = st.columns(len(db["menu"]))
-    if st.session_state.email not in db["carrito"]: db["carrito"][st.session_state.email] = []
+# --- 4. VISTA: CONFIGURACIÓN DE PERFIL (BOTÓN APARTE) ---
+if menu == "👤 Perfil":
+    st.title("👤 Mi Perfil")
+    col_v, col_e = st.columns([1, 2])
+    with col_v:
+        st.image(u_info["foto"] if u_info["foto"] else "https://cdn-icons-png.flaticon.com/512/149/149071.png", width=150)
     
-    for i, item in enumerate(db["menu"]):
-        with cols[i]:
-            if item["foto"]: st.image(item["foto"])
-            st.subheader(item["nombre"])
-            st.write(f"{item['desc']}")
-            st.write(f"**${item['precio']}**")
-            if st.button(f"Añadir", key=f"add_{item['id']}"):
-                db["carrito"][st.session_state.email].append(item)
-                st.toast(f"{item['nombre']} agregado")
-
-    st.divider()
-    st.header("🛒 Tu Carrito")
-    carrito_actual = db["carrito"][st.session_state.email]
-    if carrito_actual:
-        total = sum(i['precio'] for i in carrito_actual)
-        st.table(pd.DataFrame(carrito_actual))
-        st.write(f"### Total a pagar: ${total}")
-        direc = st.text_input("¿A dónde lo enviamos? (Dirección exacta)")
-        if st.button("Confirmar Pedido (Efectivo)"):
-            nuevo_p = {
-                "id": len(db["pedidos"]) + 1,
-                "cliente": st.session_state.email,
-                "nombre_cliente": u_info["nombre"],
-                "items": carrito_actual.copy(),
-                "total": total,
-                "direccion": direc,
-                "estado": "Recibido",
-                "repartidor": None,
-                "fecha": datetime.datetime.now().strftime("%H:%M"),
-                "lat": 21.88, "lon": -102.29
-            }
-            db["pedidos"].append(nuevo_p)
-            db["carrito"][st.session_state.email] = []
-            st.success("¡Pedido enviado! Generando ticket...")
-            st.rerun()
-
-# B. TRABAJADOR Y ADMIN: GESTIÓN DE MENÚ Y STAFF
-elif opcion == "🍴 Gestionar Menú":
-    st.title("🥘 Administración de Platillos")
-    with st.expander("➕ Agregar nuevo platillo"):
-        n = st.text_input("Nombre")
-        d = st.text_area("Descripción")
-        p = st.number_input("Precio", min_value=0.0)
-        f = st.file_uploader("Foto del platillo")
-        if st.button("Guardar en Menú"):
-            db["menu"].append({"id": len(db["menu"])+1, "nombre": n, "desc": d, "precio": p, "foto": procesar_imagen(f)})
-            st.rerun()
-    
-    st.write("### Menú Actual")
-    for i, item in enumerate(db["menu"]):
-        col_n, col_p, col_acc = st.columns([3, 1, 1])
-        col_n.write(item["nombre"])
-        col_p.write(f"${item['precio']}")
-        if col_acc.button("Eliminar", key=f"del_m_{i}"):
-            db["menu"].pop(i)
-            st.rerun()
-
-elif opcion == "📊 Panel Staff":
-    st.title("📋 Control de Pedidos y Logística")
-    
-    for p in db["pedidos"]:
-        with st.container(border=True):
-            c1, c2, c3 = st.columns([2, 2, 2])
-            with c1:
-                st.write(f"**Pedido #{p['id']}** - {p['nombre_cliente']}")
-                st.write(f"📍 {p['direccion']}")
-                st.write(f"💰 Total: ${p['total']}")
-            with c2:
-                # Lógica de asignación inteligente
-                reps_dispo = {u['nombre']: k for k, u in db["usuarios"].items() if u['rol'] == 'Repartidor' and u.get('disponible', True)}
-                if not p["repartidor"]:
-                    rep_sel = st.selectbox("Asignar Repartidor", list(reps_dispo.keys()), key=f"sel_{p['id']}")
-                    if st.button("Asignar y Enviar", key=f"asig_{p['id']}"):
-                        # Calcular pedidos pendientes del repartidor
-                        pendientes = len([x for x in db["pedidos"] if x['repartidor'] == reps_dispo[rep_sel] and x['estado'] != "Entregado"])
-                        p["repartidor"] = reps_dispo[rep_sel]
-                        p["estado"] = "En camino"
-                        st.info(f"Asignado a {rep_sel}. Tiene {pendientes} pedidos antes.")
-                        st.rerun()
-                else:
-                    st.write(f"🚚 Repartidor: {db['usuarios'][p['repartidor']]['nombre']}")
-                    st.write(f"Estado: **{p['estado']}**")
-            with c3:
-                # Chat específico del pedido
-                if st.button("💬 Abrir Chat Pedido", key=f"chat_{p['id']}"):
-                    st.session_state.chat_abierto = p['id']
-
-# C. ADMINISTRADOR: GESTIÓN DE USUARIOS
-elif opcion == "👥 Usuarios":
-    st.title("👤 Gestión de Usuarios (Manuel Montes)")
-    if u_rol == "Administrador":
-        for email, info in db["usuarios"].items():
-            col_u, col_r, col_a = st.columns([2, 2, 1])
-            col_u.write(f"**{info['nombre']}** ({email})")
-            col_r.write(f"Rol: {info['rol']}")
-            if info["activo"]:
-                if col_a.button("Dar de Baja", key=f"baja_{email}"):
-                    info["activo"] = False
-                    st.rerun()
-            else:
-                if col_a.button("Activar", key=f"alta_{email}"):
-                    info["activo"] = True
-                    st.rerun()
+    with st.expander("⚙️ Configuración y Edición de Cuenta"):
+        archivo = st.file_uploader("Subir foto de galería", type=['jpg','png'])
+        if archivo:
+            # Lógica de procesamiento de imagen mantenida
+            img = Image.open(archivo)
+            img.thumbnail((300, 300))
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            u_info["foto"] = f"data:image/png;base64,{base64.b64encode(buf.getvalue()).decode()}"
+            st.success("Foto cargada")
         
-        st.divider()
-        st.subheader("Registrar Nuevo Trabajador/Repartidor")
-        with st.form("new_staff"):
-            ne = st.text_input("Email Staff")
-            nn = st.text_input("Nombre Staff")
-            np = st.text_input("Clave Staff")
-            nr = st.selectbox("Rol", ["Trabajador", "Repartidor"])
-            if st.form_submit_button("Crear Staff"):
-                db["usuarios"][ne] = {"clave": np, "rol": nr, "nombre": nn, "foto": None, "activo": True, "disponible": True}
-                st.success("Staff creado.")
-    else:
-        st.error("Solo Manuel Montes tiene acceso aquí.")
+        u_info["nombre"] = st.text_input("Nombre", value=u_info["nombre"])
+        u_info["clave"] = st.text_input("Contraseña", value=u_info["clave"], type="password")
+        if st.button("Guardar Cambios"): st.rerun()
 
-# --- 7. SISTEMA DE CHAT DIFERENCIADO ---
-if 'chat_abierto' in st.session_state:
-    id_p = st.session_state.chat_abierto
+# --- 5. VISTA: CLIENTE (MENU E INICIO) ---
+elif menu == "🏠 Inicio (Menú)" and u_rol == "Cliente":
+    st.title("🍕 Menú del Día")
+    if 'carrito' not in st.session_state: st.session_state.carrito = []
+    
+    for item in db["menu"]:
+        with st.container(border=True):
+            c1, c2, c3 = st.columns([1, 2, 1])
+            with c1: 
+                if item["foto"]: st.image(item["foto"], width=100)
+            with c2: 
+                st.subheader(item["nombre"])
+                st.write(item["desc"])
+            with c3:
+                st.write(f"**${item['precio']}**")
+                if st.button("🛒 Agregar", key=f"buy_{item['id']}"):
+                    st.session_state.carrito.append(item)
+                    st.toast("Agregado al carrito")
+
+elif menu == "🛒 Mi Carrito y Rastreo":
+    st.title("🛒 Estado de mi Pedido")
+    # Carrito actual
+    if st.session_state.carrito:
+        st.write("### Productos seleccionados")
+        df_car = pd.DataFrame(st.session_state.carrito)
+        st.table(df_car[['nombre', 'precio']])
+        total = sum(i['precio'] for i in st.session_state.carrito)
+        if st.button(f"Confirmar Pedido (${total}) - Pago Efectivo"):
+            # Generar Pedido
+            np = {
+                "id": len(db["pedidos"])+1, "cl_e": st.session_state.email, "cl_n": u_info["nombre"],
+                "items": st.session_state.carrito.copy(), "total": total, "estado": "Recibido",
+                "rep": None, "fecha": datetime.datetime.now(), "eta": "30-45 min"
+            }
+            db["pedidos"].append(np)
+            st.session_state.carrito = []
+            st.success("Pedido realizado con éxito")
+            st.rerun()
+    
+    # Rastreo y Ticket
     st.divider()
-    st.subheader(f"💬 Chat del Pedido #{id_p}")
-    if id_p not in db["chats"]: db["chats"][id_p] = []
+    mi_p = next((p for p in db["pedidos"] if p["cl_e"] == st.session_state.email and p["estado"] != "Entregado"), None)
+    if mi_p:
+        st.subheader("🎫 Ticket de Seguimiento")
+        st.info(f"Estado: {mi_p['estado']} | Tiempo estimado: {mi_p['eta']}")
+        # Mapa de rastreo mantenido
+        m = folium.Map(location=[21.88, -102.29], zoom_start=14)
+        folium.Marker([21.88, -102.29], popup="Tu Repartidor", icon=folium.Icon(color='orange', icon='motorcycle', prefix='fa')).add_to(m)
+        st_folium(m, height=300, key="mapa_cliente")
+
+# --- 6. VISTA: TRABAJADOR Y STAFF (PEDIDOS Y MENU) ---
+elif menu in ["🏠 Pedidos Staff", "🏠 Panel Staff"]:
+    st.title("📑 Gestión de Pedidos Generados")
+    for p in db["pedidos"]:
+        with st.expander(f"Pedido #{p['id']} - {p['cl_n']} ({p['estado']})"):
+            st.write(f"Dirección: {p.get('dir', 'No especificada')}")
+            st.write(f"Total: ${p['total']}")
+            # Solo admin puede asignar
+            if u_rol == "Administrador" and not p["rep"]:
+                reps = {u['nombre']: k for k, u in db["usuarios"].items() if u['rol'] == 'Repartidor'}
+                rs = st.selectbox("Asignar Repartidor", list(reps.keys()), key=f"rep_{p['id']}")
+                if st.button("Confirmar Repartidor", key=f"btn_{p['id']}"):
+                    p["rep"] = reps[rs]
+                    p["estado"] = "En camino"
+                    st.rerun()
+
+elif menu == "🍴 Gestionar Menú":
+    st.title("🍴 Administración del Menú")
+    # Agregar
+    with st.expander("➕ Añadir Nuevo Platillo"):
+        nom = st.text_input("Nombre")
+        pre = st.number_input("Precio", min_value=0.0)
+        des = st.text_area("Descripción")
+        if st.button("Guardar"):
+            db["menu"].append({"id": len(db["menu"])+1, "nombre": nom, "precio": pre, "desc": des, "foto": None})
+            st.rerun()
     
-    for m in db["chats"][id_p]:
-        color = "blue" if m["rol"] == "Cliente" else "green" if m["rol"] == "Repartidor" else "orange"
-        st.markdown(f"<span style='color:{color}'>**[{m['rol']}] {m['autor']}:**</span> {m['txt']}", unsafe_allow_html=True)
+    # Editar/Borrar
+    for i, item in enumerate(db["menu"]):
+        with st.container(border=True):
+            col_a, col_b = st.columns([3, 1])
+            with col_a:
+                item["nombre"] = st.text_input("Editar Nombre", value=item["nombre"], key=f"en_{i}")
+                item["precio"] = st.number_input("Editar Precio", value=item["precio"], key=f"ep_{i}")
+            with col_b:
+                if st.button("🗑️ Quitar", key=f"rb_{i}"):
+                    db["menu"].pop(i)
+                    st.rerun()
+
+# --- 7. VISTA: ADMIN (GESTIÓN USUARIOS DIVIDIDA) ---
+elif menu == "👥 Usuarios" and u_rol == "Administrador":
+    st.title("👥 Control de Usuarios")
+    sub_admin = st.radio("Acción:", ["Registrar Staff", "Gestión de Usuarios Activos"], horizontal=True)
     
-    msg = st.chat_input("Escribe tu mensaje...")
-    if msg:
-        db["chats"][id_p].append({"autor": u_info["nombre"], "rol": u_rol, "txt": msg})
-        st.rerun()
-    if st.button("Cerrar Ventana de Chat"):
-        del st.session_state.chat_abierto
-        st.rerun()
+    if sub_admin == "Registrar Staff":
+        with st.form("reg_staff"):
+            se = st.text_input("Email Staff")
+            sn = st.text_input("Nombre Staff")
+            sp = st.text_input("Clave")
+            sr = st.selectbox("Rol", ["Trabajador", "Repartidor"])
+            if st.form_submit_button("Dar de Alta"):
+                db["usuarios"][se] = {"clave": sp, "rol": sr, "nombre": sn, "foto": None, "activo": True}
+                st.success("Staff creado con éxito")
+                
+    else:
+        filtro_rol = st.selectbox("Ver por tipo:", ["Todos", "Cliente", "Repartidor", "Trabajador"])
+        for email, info in db["usuarios"].items():
+            if filtro_rol == "Todos" or info["rol"] == filtro_rol:
+                with st.container(border=True):
+                    c1, c2, c3 = st.columns([2, 1, 1])
+                    c1.write(f"**{info['nombre']}** ({email})")
+                    c2.write(f"Rol: {info['rol']}")
+                    label_baja = "Dar de Baja" if info["activo"] else "Reactivar"
+                    if c3.button(label_baja, key=f"acc_{email}"):
+                        info["activo"] = not info["activo"]
+                        st.rerun()
