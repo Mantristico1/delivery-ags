@@ -1,3 +1,6 @@
+from db import init_db, create_user, create_order, get_orders
+init_db()
+
 import streamlit as st
 import folium
 from streamlit_folium import st_folium
