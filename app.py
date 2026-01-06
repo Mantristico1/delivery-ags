@@ -249,6 +249,11 @@ menu = st.sidebar.selectbox(
     "Selecciona tu rol",
     ["Cliente", "Cocina", "Repartidor"]
 )
+if "user_role" not in st.session_state:
+    st.session_state.user_role = None
+
+if "user_name" not in st.session_state:
+    st.session_state.user_name = ""
 
 # ---------------- CLIENTE ----------------
 if menu == "Cliente":
