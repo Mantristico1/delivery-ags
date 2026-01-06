@@ -9,6 +9,23 @@ def init_db():
     conn = get_connection()
     cursor = conn.cursor()
 
+    def get_user(email):
+    """Fetches a user and their store context."""
+    cursor = conn.cursor()
+    cursor.execute("SELECT email, password, role, name, is_active, store_id FROM users WHERE email=?", (email,))
+    return cursor.fetchone()
+
+def get_menu_by_store(store_id):
+    """Retrieves only the menu items for the specific store."""
+    query = "SELECT id, name, price, description, image_64 FROM menu WHERE store_id = ?"
+    return pd.read_sql_query(query, conn, params=(store_id,))
+
+def create_store(name, slug):
+    """Utility to register a new store in the SaaS."""
+    cursor = conn.cursor()
+    cursor.execute("INSERT OR IGNORE INTO stores (name, slug) VALUES (?, ?)", (name, slug))
+    conn.commit()
+    return cursor.lastrowid
     # Usuarios
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS users (
