@@ -54,7 +54,31 @@ def procesar_imagen_binaria(archivo):
         img.save(buf, format="PNG")
         return f"data:image/png;base64,{base64.b64encode(buf.getvalue()).decode()}"
     return None
+    
+# --- MOTOR DE PERSISTENCIA SQLITE ---
+def init_db():
+    conn = sqlite3.connect('ags_delivery.db', check_same_thread=False)
+    cursor = conn.cursor()
+    cursor.execute('''CREATE TABLE IF NOT EXISTS menu 
+                      (id INTEGER PRIMARY KEY, store_id INTEGER, name TEXT, 
+                       price REAL, description TEXT, image_64 TEXT)''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS users 
+                      (email TEXT PRIMARY KEY, store_id INTEGER, password TEXT, 
+                       role TEXT, name TEXT, is_active INTEGER)''')
+    # Insertar Admin inicial si no existe
+    cursor.execute('''INSERT OR IGNORE INTO users VALUES 
+                      ('admin@delivery.com', 1, '1234', 'Administrador', 'Manuel Montes', 1)''')
+    conn.commit()
+    return conn
 
+conn = init_db()
+
+def guardar_platillo_db(store_id, nombre, precio, descripcion, imagen_64):
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO menu (store_id, name, price, description, image_64) VALUES (?, ?, ?, ?, ?)",
+                   (store_id, nombre, precio, descripcion, imagen_64))
+    conn.commit()
+    return True
 # --- 2. BASE DE DATOS (PERSISTENCIA EN SESSION STATE) ---
 if 'db' not in st.session_state:
     st.session_state.db = {
